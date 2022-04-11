@@ -1,4 +1,5 @@
-﻿using Kata_Invoicing.InvoiceManager.InvoiceExport;
+﻿using Kata_Invoicing.Code;
+using Kata_Invoicing.InvoiceManager.InvoiceGenerators;
 using System;
 
 namespace Startup
@@ -7,16 +8,21 @@ namespace Startup
     {
         static void Main(string[] args)
         {
-            //Invoices: SettlementReport: InvoiceID: 3
+            //Invoices:
+            //SettlementReport: InvoiceID: 3
             //Invoice: InvoiceID: 1
 
-            InvoiceGenerator settlementReportGenerator = new InvoiceGenerator(1);
-            var exportResult1 = settlementReportGenerator.ExportInvoiceXls();
+            BaseInvoiceGenerator generator;
+
+            generator = new SettlementReportGenerator();
+            var exportResult1 = generator.ExportInvoice(new ExcelExportInvoice());
             Console.WriteLine($"File {exportResult1.FilePath} exported");
 
-            InvoiceGenerator invoiceGenerator = new InvoiceGenerator(3);
-            var exportResult2 = invoiceGenerator.ExportInvoiceXls();
-            Console.WriteLine($"File {exportResult2.FilePath} exported");
+            generator = new InvoiceGenerator();
+            var exportResult2 = generator.ExportInvoice(new PdfExportInvoice());
+
+            generator = new SettlementInvoiceGenerator();
+            var exportResult3 = generator.ExportInvoice(new NotepadExportInvoice());
 
             Console.WriteLine("finished...");
             Console.ReadKey();

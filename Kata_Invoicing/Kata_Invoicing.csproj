@@ -68,6 +68,16 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="InvoiceManager\InvoiceGenerators\BaseInvoiceGenerator.cs" />
+    <Compile Include="InvoiceManager\InvoiceExports\ExcelExportInvoice.cs" />
+    <Compile Include="Interfaces\IExportableInvoice.cs" />
+    <Compile Include="Model\BaseInvoiceModel.cs" />
+    <Compile Include="Model\InvoiceModel.cs" />
+    <Compile Include="InvoiceManager\InvoiceExports\NotepadExportInvoice.cs" />
+    <Compile Include="InvoiceManager\InvoiceExports\PdfExportInvoice.cs" />
+    <Compile Include="InvoiceManager\InvoiceGenerators\SettlementInvoiceGenerator.cs" />
+    <Compile Include="InvoiceManager\InvoiceGenerators\SettlementReportGenerator.cs" />
+    <Compile Include="Infrastructure\Common\Enums\FeeType.cs" />
     <Compile Include="Infrastructure\Common\Utils\CellStyleUtil.cs" />
     <Compile Include="Infrastructure\Common\Constants\Constants.cs" />
     <Compile Include="Infrastructure\Common\Utils\ExcelHelper.cs" />
@@ -103,8 +113,8 @@
     <Compile Include="Infrastructure\RepositoryFramework\RepositoryFactory.cs" />
     <Compile Include="Infrastructure\Transactions\TransactionType.cs" />
     <Compile Include="Infrastructure\UnitOfWork.cs" />
-    <Compile Include="InvoiceManager\InvoiceExport\InvoiceGenerator.cs" />
-    <Compile Include="InvoiceType.cs" />
+    <Compile Include="InvoiceManager\InvoiceGenerators\InvoiceGenerator.cs" />
+    <Compile Include="Infrastructure\Common\Enums\InvoiceType.cs" />
     <Compile Include="Model\Invoices\IInvoiceRepository.cs" />
     <Compile Include="Model\Invoices\Invoice.cs" />
     <Compile Include="Model\Invoices\InvoiceDetails.cs" />
@@ -114,6 +124,7 @@
     <Compile Include="Model\Settings\Settings.cs" />
     <Compile Include="Model\Settings\SettingsRuleMessages.cs" />
     <Compile Include="Model\Settings\SettingsService.cs" />
+    <Compile Include="Infrastructure\Common\Enums\PaymentType.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -12,7 +12,6 @@ namespace Kata_Invoicing.Model.Settings
     {
         public string ExportInvoicesPath { get; set; }
 
-
         public int Key
         {
             get { return 0; }

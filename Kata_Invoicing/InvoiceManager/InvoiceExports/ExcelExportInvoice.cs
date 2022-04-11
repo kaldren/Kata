@@ -1,82 +1,33 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data.SqlClient;
+﻿using Kata_Invoicing.Infrastructure.Common.Utils;
+using Kata_Invoicing.Model;
+using NPOI.SS.UserModel;
 using System.IO;
-using System.Linq;
-using Kata_Invoicing.Infrastructure.Common.Utils;
-using Kata_Invoicing.Model.Invoices;
 using Kata_Invoicing.Model.Settings;
-using log4net;
 using NPOI.HPSF;
 using NPOI.HSSF.UserModel;
-using NPOI.SS.UserModel;
+using System;
+using Kata_Invoicing.Model.Invoices;
+using log4net;
 using NPOI.SS.Util;
 
-namespace Kata_Invoicing.InvoiceManager.InvoiceExport
+namespace Kata_Invoicing.Code
 {
-    public class InvoiceGenerator
+    public sealed class ExcelExportInvoice : IExportableInvoice
     {
-        #region Private properties
-
-        private static readonly ILog Log = LogManager.GetLogger(typeof(InvoiceGenerator));
         private HSSFWorkbook workbook;
+        private InvoiceModel model;
 
-        private readonly int invoiceId;
-        //private Invoice currentInvoice;
+        protected static readonly ILog Log = LogManager.GetLogger(typeof(ExcelExportInvoice));
 
-        public string ErrorMessage;
-
-        //InvoiceData
-        public InvoiceDetails InvoiceDetails;
-        public List<InvoicePayment> InvoicePayments;
-        public List<InvoiceFee> InvoiceFees;
-
-
-        //Invoice
-        public string InvoiceNumber;
-        public string InvoiceDate;
-        public string InvoiceStartDate;
-        public string InvoiceEndDate;
-        public string InvoiceSettlementCurrency;
-        public string InvoiceTypeName;
-
-        //Payments
-        public decimal PaymentsAmount;
-        public decimal TotalPaymentsAmount;
-
-        //TransactionFees
-        public decimal TransactionFeesAmount;
-        public decimal TotalTransactionFeesAmount;
-
-        //Total
-        public string TotalDescription;
-        public decimal TotalPayOutAmount;
-        #endregion
-
-        #region Constructor
-
-        public InvoiceGenerator(int invoiceId)
+        public ExcelExportInvoice()
         {
-            this.invoiceId = invoiceId;
-
-            try
-            {
-                GetInvoiceDataFromDb();
-                ComputeInvoiceFirstPage();
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex);
-                ErrorMessage = ex.Message;
-            }
+            this.workbook = new HSSFWorkbook();
         }
 
-        #endregion
-
-        #region Export Invoice Methods
-
-        public ExportResult ExportInvoiceXls()
+        public ExportResult Export(BaseInvoiceModel model)
         {
+            this.model = model as InvoiceModel;
+
             var exportResult = new ExportResult();
             try
             {
@@ -89,25 +40,25 @@ namespace Kata_Invoicing.InvoiceManager.InvoiceExport
                 }
 
                 InitializeWorkBook();
-                
+
                 GenerateInvoiceSheet();
-                
+
                 //make final adjustments to the workbook according to the InvoiceType
-                workbook.SetSheetName(0, InvoiceTypeName);
-   
+                workbook.SetSheetName(0, this.model.InvoiceTypeName);
+
                 //save invoice to the specific path
                 exportResult.FilePath = SaveWorkBook(settings);
                 if (!string.IsNullOrEmpty(exportResult.FilePath))
                 {
                     //update invoice Status (only if not Final)
-                    var invoice = InvoiceService.GetInvoiceByID(invoiceId);
+                    var invoice = InvoiceService.GetInvoiceByID(this.model.InvoiceDetails.InvoiceID);
 
                     invoice.InvoiceFilePathXLS = exportResult.FilePath;
                     var ok = InvoiceService.UpdateInvoice(invoice);
                     if (ok)
                     {
                         exportResult.IsOk = true;
-                        InvoiceDetails.InvoiceFilePathXLS = exportResult.FilePath;
+                        this.model.InvoiceDetails.InvoiceFilePathXLS = exportResult.FilePath;
                     }
                     else
                     {
@@ -117,96 +68,20 @@ namespace Kata_Invoicing.InvoiceManager.InvoiceExport
             }
             catch (IOException e)
             {
-                Log.Error($"InvoiceID : {invoiceId} - {e}");
+                Log.Error($"InvoiceID : {this.model.InvoiceDetails.InvoiceID} - {e}");
                 exportResult.ErrorMessage =
                     "Invoice not Exported! Please make sure that another user is not processing this invoice, and then try again. \n" +
                     e.Message;
             }
             catch (Exception e)
             {
-                Log.Error($"InvoiceID : {invoiceId} - {e}");
+                Log.Error($"InvoiceID : {this.model.InvoiceDetails.InvoiceID} - {e}");
                 exportResult.ErrorMessage = e.Message;
             }
-
 
             return exportResult;
         }
 
-        #region Private Methods
-
-        //get data from db
-        private void GetInvoiceDataFromDb()
-        {
-            try
-            {
-                //get invoice data from database
-                InvoiceDetails = InvoiceService.GetInvoiceDetails(invoiceId);
-                InvoicePayments = InvoiceService.GetInvoicePayments(invoiceId);
-                InvoiceFees = InvoiceService.GetInvoiceFees(invoiceId);
-            }
-            catch (SqlException e)
-            {
-                Log.Error(e.Message);
-                throw;
-            }
-            catch (Exception e)
-            {
-                Log.Error(e.Message);
-            }
-        }
-
-        private void ComputeInvoiceFirstPage()
-        {
-            try
-            {
-                #region InvoiceData
-
-                //set Invoice Data that is computed on the generation time
-                InvoiceNumber = !string.IsNullOrEmpty(InvoiceDetails.InvoiceNumber)
-                    ? InvoiceDetails.InvoiceNumber
-                    : "000000000000";
-                InvoiceDate = InvoiceDetails.InvoiceDate.ToString(Constants.LONG_DATE_FORMAT);
-                InvoiceStartDate = InvoiceDetails.InvoiceStartDate.ToString(Constants.LONG_DATE_FORMAT);
-                InvoiceEndDate = InvoiceDetails.InvoiceEndDate.ToString(Constants.LONG_DATE_FORMAT);
-                InvoiceSettlementCurrency = InvoiceDetails.InvoiceSettlementCurrency;
-
-                InvoiceTypeName = InvoiceDetails.InvoiceTypeName;
-
-                #endregion
-
-                #region Payments
-
-                //set the payments
-                PaymentsAmount = InvoicePayments.Where(x => x.PaymentTypeID == (int)PaymentType.Payment)
-                    .Sum(x => x.CalculatedAmount);
-
-                TotalPaymentsAmount = PaymentsAmount;
-
-                #endregion
-
-                #region TransactionFees
-
-                TransactionFeesAmount = InvoiceFees.Where(x => x.FeeID == (int)FeeType.TransactionFee).Sum(f => f.CalculatedAmount);
-
-                TotalTransactionFeesAmount = TransactionFeesAmount;
-
-                #endregion
-
-                #region Total
-
-                TotalDescription = InvoiceDetails.InvoiceTypeID == (int)InvoiceType.Invoice ? "TOTAL FEES" : "TOTAL PAY OUT";
-
-                TotalPayOutAmount = InvoiceDetails.InvoiceTypeID == (int)InvoiceType.Invoice ? TotalTransactionFeesAmount : PaymentsAmount;
-
-                #endregion
-            }
-            catch (Exception e)
-            {
-                Log.Error(e.Message);
-            }
-        }
-
-        //export invoice helpers
         private void InitializeWorkBook()
         {
             //from template
@@ -228,7 +103,7 @@ namespace Kata_Invoicing.InvoiceManager.InvoiceExport
             var exportPath = Path.Combine(settings.ExportInvoicesPath);
             if (!Directory.Exists(exportPath)) Directory.CreateDirectory(exportPath);
 
-            var invoiceName = InvoiceDetails.InvoiceNumber + Constants.XlsExtension;
+            var invoiceName = this.model.InvoiceDetails.InvoiceNumber + Constants.XlsExtension;
             var invoiceFullName = Path.Combine(exportPath, invoiceName);
 
             var file = new FileStream(invoiceFullName, FileMode.Create);
@@ -243,10 +118,10 @@ namespace Kata_Invoicing.InvoiceManager.InvoiceExport
         {
             var invoiceSheet = workbook.GetSheet("Invoice");
 
-            var clientName = !string.IsNullOrEmpty(InvoiceDetails.ClientName)
-                ? InvoiceDetails.ClientName
+            var clientName = !string.IsNullOrEmpty(this.model.InvoiceDetails.ClientName)
+                ? this.model.InvoiceDetails.ClientName
                 : "";
-            
+
             #region InvoiceHeader
 
             var indexStart = new IndexCell
@@ -259,10 +134,10 @@ namespace Kata_Invoicing.InvoiceManager.InvoiceExport
             IRow row;
 
             //Invoice Type Name
-            if (!string.IsNullOrEmpty(InvoiceTypeName))
+            if (!string.IsNullOrEmpty(this.model.InvoiceTypeName))
             {
                 row = CellUtil.GetRow(4, invoiceSheet);
-                CellUtil.GetCell(row, 0).SetCellValue(InvoiceTypeName);
+                CellUtil.GetCell(row, 0).SetCellValue(this.model.InvoiceTypeName);
             }
 
             //Client Dates
@@ -280,24 +155,24 @@ namespace Kata_Invoicing.InvoiceManager.InvoiceExport
 
             row = CellUtil.GetRow(indexStart.Row++, invoiceSheet);
             cell = CellUtil.GetCell(row, indexStart.Col - 1);
-            cell.SetCellValue(InvoiceTypeName.ToLower() + " number");
-            CellUtil.GetCell(row, indexStart.Col).SetCellValue(InvoiceNumber);
+            cell.SetCellValue(this.model.InvoiceTypeName.ToLower() + " number");
+            CellUtil.GetCell(row, indexStart.Col).SetCellValue(this.model.InvoiceNumber);
 
             row = CellUtil.GetRow(indexStart.Row++, invoiceSheet);
             cell = CellUtil.GetCell(row, indexStart.Col);
-            cell.SetCellValue(InvoiceDate);
+            cell.SetCellValue(this.model.InvoiceDate);
 
             row = CellUtil.GetRow(indexStart.Row++, invoiceSheet);
             cell = CellUtil.GetCell(row, indexStart.Col);
-            cell.SetCellValue(InvoiceStartDate);
+            cell.SetCellValue(this.model.InvoiceStartDate);
             cell = CellUtil.GetCell(row, indexStart.Col + 1);
-            cell.SetCellValue(InvoiceEndDate);
+            cell.SetCellValue(this.model.InvoiceEndDate);
 
             indexStart.Row = indexCellTemp.Row;
 
             #endregion
 
-            if (InvoiceDetails.InvoiceTypeID != (int)InvoiceType.Invoice)
+            if (this.model.InvoiceDetails.InvoiceTypeID != (int)InvoiceType.Invoice)
             {
                 #region Payments
 
@@ -314,7 +189,7 @@ namespace Kata_Invoicing.InvoiceManager.InvoiceExport
 
                 row = CellUtil.GetRow(indexCellTemp.Row++, invoiceSheet);
                 cell = CellUtil.GetCell(row, indexCellTemp.Col++);
-                cell.SetCellValue($"{InvoiceStartDate} - {InvoiceEndDate}");
+                cell.SetCellValue($"{this.model.InvoiceStartDate} - {this.model.InvoiceEndDate}");
                 cell.CellStyle = CellStyleUtil.GetCellStyleKey(workbook, CellStyleUtil.CellType.Text,
                     CellStyleUtil.Bold.NotBolded, CellStyleUtil.Border.TopBottom, BorderStyle.Medium, null);
 
@@ -329,22 +204,22 @@ namespace Kata_Invoicing.InvoiceManager.InvoiceExport
                     CellStyleUtil.Bold.NotBolded, CellStyleUtil.Border.TopBottom, BorderStyle.Medium, null);
 
                 cell = CellUtil.GetCell(row, indexCellTemp.Col);
-                cell.SetCellValue((double)PaymentsAmount);
+                cell.SetCellValue((double)this.model.PaymentsAmount);
                 cell.CellStyle = CellStyleUtil.GetCellStyleKey(workbook, CellStyleUtil.CellType.Number,
                     CellStyleUtil.Bold.NotBolded, CellStyleUtil.Border.All, BorderStyle.Medium,
-                    InvoiceSettlementCurrency);
+                    this.model.InvoiceSettlementCurrency);
 
                 indexCellTemp.Col = (short)(indexStart.Col + 1);
 
-             
+
 
                 //Total Payments
                 row = CellUtil.GetRow(indexCellTemp.Row, invoiceSheet);
                 cell = CellUtil.GetCell(row, indexStart.Col + 5);
-                cell.SetCellValue((double)TotalPaymentsAmount);
+                cell.SetCellValue((double)this.model.TotalPaymentsAmount);
                 cell.CellStyle = CellStyleUtil.GetCellStyleKey(workbook, CellStyleUtil.CellType.Number,
                     CellStyleUtil.Bold.NotBolded, CellStyleUtil.Border.All, BorderStyle.Medium,
-                    InvoiceSettlementCurrency);
+                    this.model.InvoiceSettlementCurrency);
 
                 //set borders
                 for (var i = indexStart.Row + 1; i <= indexCellTemp.Row; i++)
@@ -369,7 +244,7 @@ namespace Kata_Invoicing.InvoiceManager.InvoiceExport
                 #endregion
             }
 
-            if (InvoiceDetails.InvoiceTypeID != (int)InvoiceType.Settlement)
+            if (this.model.InvoiceDetails.InvoiceTypeID != (int)InvoiceType.Settlement)
             {
                 #region Transaction Fees
 
@@ -387,7 +262,7 @@ namespace Kata_Invoicing.InvoiceManager.InvoiceExport
 
                 row = CellUtil.GetRow(indexCellTemp.Row++, invoiceSheet);
                 cell = CellUtil.GetCell(row, indexCellTemp.Col++);
-                cell.SetCellValue($"{InvoiceStartDate} - {InvoiceEndDate}");
+                cell.SetCellValue($"{this.model.InvoiceStartDate} - {this.model.InvoiceEndDate}");
                 cell.CellStyle = CellStyleUtil.GetCellStyleKey(workbook, CellStyleUtil.CellType.Text,
                     CellStyleUtil.Bold.NotBolded, CellStyleUtil.Border.TopBottom, BorderStyle.Medium, null);
 
@@ -403,20 +278,20 @@ namespace Kata_Invoicing.InvoiceManager.InvoiceExport
 
 
                 cell = CellUtil.GetCell(row, indexCellTemp.Col);
-                cell.SetCellValue((double)TransactionFeesAmount);
+                cell.SetCellValue((double)this.model.TransactionFeesAmount);
                 cell.CellStyle = CellStyleUtil.GetCellStyleKey(workbook, CellStyleUtil.CellType.Number,
                     CellStyleUtil.Bold.NotBolded, CellStyleUtil.Border.All, BorderStyle.Medium,
-                    InvoiceSettlementCurrency);
+                    this.model.InvoiceSettlementCurrency);
 
                 indexCellTemp.Col = (short)(indexStart.Col + 1);
-                
+
                 //Total Transaction Fees
                 row = CellUtil.GetRow(indexCellTemp.Row, invoiceSheet);
                 cell = CellUtil.GetCell(row, indexStart.Col + 5);
-                cell.SetCellValue((double)TotalTransactionFeesAmount);
+                cell.SetCellValue((double)this.model.TotalTransactionFeesAmount);
                 cell.CellStyle = CellStyleUtil.GetCellStyleKey(workbook, CellStyleUtil.CellType.Number,
                     CellStyleUtil.Bold.NotBolded, CellStyleUtil.Border.All, BorderStyle.Medium,
-                    InvoiceSettlementCurrency);
+                    this.model.InvoiceSettlementCurrency);
 
                 //set borders
                 for (var i = indexStart.Row + 1; i <= indexCellTemp.Row; i++)
@@ -462,23 +337,19 @@ namespace Kata_Invoicing.InvoiceManager.InvoiceExport
             }
 
             cell = CellUtil.GetCell(row, indexStart.Col + 1);
-            cell.SetCellValue(TotalDescription);
+            cell.SetCellValue(this.model.TotalDescription);
             cell.CellStyle = CellStyleUtil.GetCellStyleKey(workbook, CellStyleUtil.CellType.Text,
                 CellStyleUtil.Bold.Bolded, CellStyleUtil.Border.Bottom, BorderStyle.Thin, null);
 
             row = CellUtil.GetRow(indexStart.Row + 3, invoiceSheet);
             cell = CellUtil.GetCell(row, indexStart.Col + 5);
-            cell.SetCellValue((double)TotalPayOutAmount); //totalPayoutAmount
+            cell.SetCellValue((double)this.model.TotalPayOutAmount); //totalPayoutAmount
             cell.CellStyle = CellStyleUtil.GetCellStyleKey(workbook, CellStyleUtil.CellType.Number,
-                CellStyleUtil.Bold.Bolded, CellStyleUtil.Border.All, BorderStyle.Medium, InvoiceSettlementCurrency);
+                CellStyleUtil.Bold.Bolded, CellStyleUtil.Border.All, BorderStyle.Medium, this.model.InvoiceSettlementCurrency);
 
             #endregion
 
-        
+
         }
-
-        #endregion
     }
-
-    #endregion
 }
